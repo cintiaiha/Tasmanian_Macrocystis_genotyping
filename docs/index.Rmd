@@ -1,19 +1,25 @@
 ---
-title: "Genome assembly and annotation of Tasmanian *Macrocystis pyrifera*"
+title: "Genomic analysis of Tasmanian *Macrocystis pyrifera*"
 author: "Cintia Iha"
-date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
-output: "html_document"
+date: "Last compiled on `r format(Sys.time(), '%d %B %Y')`"
+output:
+   html_document:
+     css: style.css
+     toc: true
+     toc_float: 
+        collapsed: true
+        smooth_scroll: true
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
-setwd("~/CSIRO-ANACC/WGS_Illumina_AGFR")
-```
+> This tutorial was made to assist the scienfic communication and review process for Iha et al. 2022 (in prep). The pipeline may be discontinuous, but the important commands are presented here.  
 
-This is the pipeline used to assembly, remove contaminants and annotate the *Macrocystis pyrifera* from Tasmania (Iha et al. in prep). This pipeline may be discontinuous, but the important commands are presented here.
+
+# **Nuclear genome assembly and annotation**
+
 
 ## Workflow
 
@@ -203,7 +209,7 @@ pileup.sh -Xmx30g in=bmasurca.bam ref=scaffolds.fasta out=mapping_stats_masurca.
 ## Cleaning genome
 
 #### Cleaning with taxon classification using Blobtools v1
-The filter steps were adapted from Iha et al. 2021
+The filter steps were adapted from [Iha et al. 2021](https://www.sciencedirect.com/science/article/pii/S0960982221000518)
 
 **Make custom database**
 
@@ -317,7 +323,7 @@ blobtools plot -i  masurca_blobtools.blobDB.json
 
 ```
 
-![BlobTools plot](masurca_blobtools14102021.blobDB.json.bestsum.phylum.p8.span.100.blobplot.bam0.png)
+![BlobTools plot](ssc/masurca_blobtools14102021.blobDB.json.bestsum.phylum.p8.span.100.blobplot.bam0.png)
 
 
 **Removing Eukaryotes scaffolds that are distant of Stramenopiles**
@@ -415,7 +421,7 @@ We used two transcriptomes downloaded from GenBank
 
 *Macrocystis integrifolia* transcriptome: [PRJNA322132](https://www.ncbi.nlm.nih.gov/bioproject/PRJNA322132)
 
-Reference: https://link.springer.com/article/10.1007/s13205-018-1204-4#Sec7
+Reference: https://link.springer.com/article/10.1007/s13205-018-1204-4
 
 RNAseq for the brown alga *Macrocystis pyrifera*:  [PRJNA353611](https://www.ncbi.nlm.nih.gov/bioproject/?term=PRJNA353611)
 
@@ -655,7 +661,8 @@ cat blastp.outfmt6 | awk -F "\t" '$11<1e-20' | awk -F "\t" '{ if (( (($8-$7)+1) 
 
 #### Transposon-PSI
 
-Download [Transposon-PSI](http://transposonpsi.sourceforge.net/)
+Download [Transposon-PSI](http://transposonpsi.sourceforge.net/)  
+
 Download [blastall](wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/legacy.NOTSUPPORTED/2.2.26/blast-2.2.26-x64-linux.tar.gz). The program use formatdb.
 
 Create a ~/.ncbirc on home:
@@ -839,10 +846,9 @@ perl ../../Dinoflagellate_Annotation_Workflow/scripts/SNAP_output_to_gff3.pl std
 
 
 #### AUGUSTUS
-I didn't used Training mode
+I didn't use Training mode
 
 ```{bash, eval=FALSE}
-
 mkdir PREDICTION
 
 module load augustus/3.4.0
@@ -874,7 +880,6 @@ perl GeneStats.pl augustus3.codingseq augustus.cleaned.gff3 ../../scaffolds.clea
 
 Prepare data:
 ```{bash, eval=FALSE}
-
 mkdir EVIDENCE_MODELER
 
 cd EVIDENCE_MODELER/
@@ -905,7 +910,6 @@ OTHER_PREDICTION        transdecoder    10
 Run Evidence Modeler
 
 ```{bash, eval=FALSE}
-
 mkdir PARTITIONS_EVM
 cd PARTITIONS_EVM/
 
@@ -937,5 +941,678 @@ gff3_file_to_proteins.pl scaffolds.clean.fasta.evm.gff3 scaffolds.clean.fasta pr
 ```
 
 
-## DONE!
+<font size = 5>**DONE!**</font>
+
+
+----------------------------------------------------------------------------------------------------------------
+
+# **Genotyping and genetic structure**
+
+## Genotyping assembly with genome reference
+
+#### Checking quality
+
+After the Illumina sequencing, the samples were demultiplexed in fastq/ directory. All samples had the quality checked with FastQC and visualized with MultiQC.
+
+```{bash, eval = FALSE}
+module load fastqc/0.11.9
+
+cd fastq/
+
+for i in *fq.gz
+do
+        fastqc -t 16 $i
+done
+
+multiqc .
+```
+
+
+The samples A7 and A8 were removed from the genotyping assembly due to low coverage.
+
+
+#### Prepare sample for gstacks
+
+We used assembled genome as reference for SNPs calling. We had to mapped the reads of each individual against the genome before running STACKS. https://catchenlab.life.illinois.edu/stacks/manual/.
+
+The assembly was performed on HPC [Petrichor] (https://www.csiro.au/en/research/technology-space/it/petrichor-hpc) that is based on [SLURM](https://slurm.schedmd.com/slurm.html).
+We created one script to run BWA and Samtools for each sample.
+First, create the base script:
+```{bash, eval = FALSE}
+#!/bin/bash
+
+# The name of the job:
+#SBATCH --job-name="bwa"
+
+# Multithreaded (SMP) job: must run on one node
+#SBATCH --nodes=1
+# Maximum number of tasks/CPU cores used by the job:
+#SBATCH --ntasks=4
+
+# The amount of memory in megabytes per process in the job:
+#SBATCH --mem=20G
+
+# The maximum running time of the job in days-hours:mins:sec
+#SBATCH --time=1-0:0:00
+
+# The modules to load:
+module load bwa/0.7.17
+module load samtools/1.12
+
+# The job command(s)
+```
+
+Later, create one script for each sample:
+```{bash, eval = FALSE}
+mkdir alignment
+mkdir alignment/bam
+
+for fastq in $(ls fastq/*.gz)
+do
+        input=$(basename $fastq | sed 's/-1A.*//')
+        echo ${input}
+        cat bwa.script > bwa.${input}.script
+        echo "bwa mem -t 4 scaffolds.clean.fasta ${fastq} > alignment/${input}.sam" >> bwa.${input}.script
+        echo "samtools view -@ 4 -b -T scaffolds.clean.fasta alignment/${input}.sam | samtools sort -@ 4 -o alignment/bam/${input}.bam" >> bwa.${input}.script
+done
+```
+
+Send all scripts to queue:
+```{bash, eval = FALSE}
+for i in bwa.*.script ; do sbatch $i ; done
+```
+
+With all indivuals mapped against the genome, we performed the SNPs calling with STACK, using population mapping file with "population" and "region":
+```{bash, eval= FALSE}
+gstacks -I alignments/bam/  -M pop_map -O gstacks2 -t 8
+populations -P gstacks2 -M pop_map -r 0.65 --vcf --genepop --fstats --smooth --hwe -t 8
+```
+
+The STACK output are saved on gstacks2 directory.
+
+### Checking vcf file from STACKS-Populations
+
+This step is a mix of R and bash commands. We used [VCFtools](http://vcftools.sourceforge.net/) (bash) to calculate relevant information in the vcf file and R to make plots with those information:
+
+#### Using VCFTools
+
+###### **Calculate allele frequency**
+```{bash, eval = FALSE}
+vcftools --vcf gstacks2/populations.snps.vcf --freq2 --out gstacks
+```
+
+###### **Calculate mean depth per individual**
+```{bash, eval = FALSE}
+vcftools --vcf gstacks2/populations.snps.vcf --depth  --out gstacks
+```
+
+###### **Calculate mean depth per site**
+```{bash, eval = FALSE}
+vcftools --vcf gstacks2/populations.snps.vcf --site-mean-depth --out gstacks
+```
+
+###### **Calculate proportion of missing data per individual**
+```{bash, eval = FALSE}
+vcftools --vcf gstacks2/populations.snps.vcf --missing-indv --out gstacks
+```
+
+###### **Calculate proportion of missing data per site**
+```{bash, eval = FALSE}
+vcftools --vcf gstacks2/populations.snps.vcf --missing-site --out gstacks
+```
+
+
+#### R
+
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+library(tidyverse)
+library(ggpubr)
+library(poppr)
+library(RColorBrewer)
+library(tidyr)
+library(ggpubr)
+library(reshape2)
+
+vcf <- read.vcfR("gstacks2/populations.snps.vcf", verbose = FALSE)
+show(vcf)
+#Allele frequency and Minimun allele frequency (MAF)
+freq <- read_delim("gstacks2/gstacks.frq", delim = "\t", col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "a1" ,"a2"), skip = 1)
+freq$maf <- freq %>% select(a1, a2) %>% apply(1, function(z) min(z))
+summary(freq$maf)
+f <- ggplot(freq, aes(maf)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+
+#Depth per individual
+depth_sample <- read_delim("gstacks2/gstacks.idepth", delim = "\t")
+d <- ggplot(depth_sample, aes(INDV,MEAN_DEPTH)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+#Depth per variant
+depth_var <- read_delim("gstacks2/gstacks.ldepth.mean", delim = "\t")
+summary(depth_var$MEAN_DEPTH)
+dv <- ggplot(depth_var, aes(MEAN_DEPTH)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + theme_light() + xlim(0,500)
+
+#Missing per individual
+miss_ind <- read_delim("gstacks2/gstacks.imiss", delim = "\t")
+m <- ggplot(miss_ind, aes(INDV, F_MISS)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+#Missing per variant
+miss_var <- read_delim("gstacks2/gstacks.lmiss", delim = "\t")
+summary(miss_var$F_MISS)
+mv <- ggplot(miss_var, aes(F_MISS)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+
+ggarrange(f, d, dv, m, mv, 
+          ncol = 2, nrow = 3)
+```
+
+
+#### Filtering SNPs using VCFTools
+```{bash, eval = FALSE}
+vcftools --vcf gstacks2/populations.snps.vcf --maf 0.02 --max-missing 0.6 --min-meanDP 5 --max-meanDP 250 --minDP 5 --maxDP 250 --recode --out gstacks2/populations.filtered
+
+```
+
+
+###### Checking filtered VCF on R
+```{r, warning=FALSE, message=FALSE}
+vcf <- read.vcfR("gstacks2/populations.filtered.recode.renamed.vcf", verbose = FALSE)
+show(vcf)
+```
+
+
+## Genetic population analysis
+
+Workflow based on [Grunwald lab tutorials](https://grunwaldlab.github.io/Population_Genetics_in_R/gbs_analysis.html) and [adegenet tutorial for DAPC](https://github.com/thibautjombart/adegenet/wiki/Tutorials)
+
+First, import data attributes.
+```{r, warning=FALSE, message=FALSE}
+
+pop.data <- read_delim("gstacks2/pop_map2.renamed", delim = "\t", col_names = c("SampleID", "Population", "Region", "Phenotype"))
+head(pop.data)
+```
+
+Check if all the samples in the VCF and the population data frame are included
+```{r, warning=FALSE, message=FALSE}
+all(colnames(vcf@gt)[-1] == pop.data$SampleID)
+```
+
+Convert to genlight object. The genlight object was used to follow analysis.
+```{r, warning=FALSE, message=FALSE}
+#change order of populations
+pop.data$Population <- factor(pop.data$Population, levels=c("A", "B", "C", "D", "E", "F"))
+
+gl <- vcfR2genlight(vcf)
+pop(gl) <- pop.data$Population
+head(gl)
+rm(vcf, pop.data)
+```
+
+
+The first question we want to answer is "how many groups are in the our samples?". Although we collected the samples from different localities, this do not means each site is a true population. We will infer the groups/cluster using K-means approach and Discriminant analysis of principal components (DAPC) [Jombart et al. 2010](https://bmcgenomdata.biomedcentral.com/articles/10.1186/1471-2156-11-94)
+
+##### PCA
+First, quick look at PCA.
+
+```{r, warning=FALSE, message=FALSE}
+cols <- brewer.pal(n = nPop(gl), name = "Dark2")
+
+pca <- glPca(gl, nf = 2)
+#nf = an integer indicating the number of principal components to be retained
+barplot(100*pca$eig/sum(pca$eig), col = heat.colors(50), main = "PCA Eigenvalues")
+title(ylab="Percent of variance\nexplained", line = 2)
+title(xlab="Eigenvalues", line = 1)
+```
+
+The plot indicates that we can retain the first 2 PCAs that explain ~39% of the variance
+
+```{r, warning=FALSE, message=FALSE}
+pca.scores <- as.data.frame(pca$scores)
+pca.scores$pop <- pop(gl)
+
+set.seed(9)
+ggplot(pca.scores, aes(x=PC1, y=PC2, colour=pop)) + 
+  geom_point(size=2) + 
+  stat_ellipse(level = 0.9, size = 0.5) + 
+  scale_color_manual(name="Populations", values = cols) + 
+  geom_hline(yintercept = 0) + 
+  geom_vline(xintercept = 0) + 
+  theme_bw()
+```
+
+
+The first PC1 (high Eigenvalues) indicate that south populations are different from north populations. The PC2 differentiated HI from the other south populations. 
+
+
+> "However, PCA lacks some essential features for investigating the genetic structure of biological populations. First, it does not provide a group assessment, and would require a priori definition of clusters to study population structures. But even then, PCA would not be appropriate to obtain a clear picture of between-population variation (Figure 1). PCA aims to summarize the overall variability among individuals, which includes both the divergence between groups (i.e., structured genetic variability), and the variation occurring within groups ('random' genetic variability). To assess the relationships between different clusters, an adequate method should focus on between-group variability, while neglecting within-group variation." [Jombart et al. 2010](https://bmcgenomdata.biomedcentral.com/articles/10.1186/1471-2156-11-94)
+
+
+
+We used find.clusters to determined the groups in our samples and DAPC to determined the population structure. [Reference](https://grunwaldlab.github.io/Population_Genetics_in_R/clustering_plot.html). Good practice for using DAPC were based on [Miller et al. 2020](https://www.nature.com/articles/s41437-020-0348-2)
+
+
+
+
+#### K-means
+
+```{r}
+#Set max number of clusters (K)
+maxK <- 10
+
+#Create an empty matrix
+myMat <- matrix(nrow=10, ncol=maxK)
+colnames(myMat) <- 1:ncol(myMat)
+
+#Find clusters and save BIC values in a matrix
+for(i in 1:nrow(myMat)){
+  grp <- find.clusters(gl, n.pca=40, choose.n.clust = FALSE, max.n.clust = maxK, criterion = "diffNgroup")
+  myMat[i,] <- grp$Kstat
+}
+
+#Make long data
+my_df <- melt(myMat)
+colnames(my_df)[1:3] <- c("Group", "K", "BIC")
+my_df$K <- as.factor(my_df$K)
+
+# Plot cluster inference results
+Kplot <- ggplot(my_df, aes(K, BIC)) + geom_boxplot() + theme_bw() + xlab("Number of groups (K)")
+Kplot
+```
+
+The results indicate that our samples are structured in 2 or 3 clusters (lower BIC values). However, the best Kstats indicate 2 clusters.
+
+We can compared the original populations with the inferred clusters:
+
+```{r}
+table(pop(gl), grp$grp)
+table.value(table(pop(gl), grp$grp), col.labels = paste("Inferred_cluster", 1:6), row.labels = levels(pop(gl)))
+```
+
+The plot shows that south and north populations are grouped in two distinct clusters.
+
+
+
+##### DAPC
+
+Based on the PCA results, we retained two components (n.pca = 2) and two DA eigenvalues (n.da = 2).
+
+```{r, warning=FALSE, message=FALSE}
+dapc <- dapc(gl, n.pca = 2, n.da = 2)
+scatter(dapc, scree.da=TRUE, posi.da = "bottomright", col = cols, cex = 3, scree.pca = TRUE)
+
+```
+
+
+Create STRUCTURE-like plot
+
+```{r, warning=FALSE, message=FALSE}
+#Create composition plot
+dapc.results <- as.data.frame(dapc$posterior)
+dapc.results$pop <- pop(gl)
+dapc.results$indNames <- rownames(dapc.results)
+dapc.results <- pivot_longer(dapc.results, -c(pop, indNames))
+head(dapc.results, n = 6)
+
+colnames(dapc.results) <- c("Original_Pop","Sample","Assigned_Pop","Posterior_membership_probability")
+
+t <- ggplot(dapc.results, aes(x=Sample, y=Posterior_membership_probability, fill=Assigned_Pop)) + 
+  geom_bar(stat = 'identity') +
+  scale_fill_manual(name="Populations", values = cols) +
+  facet_grid(~Original_Pop, scales = "free") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  labs(y="Posterior membership probability", x=NULL)
+t
+```
+
+<font size = 5>**DONE!**</font>
+
+
+----------------------------------------------------------------------------------------------------------------
+
+# **Genotyping associated with warm-tolerance**
+
+
+## Assembly RAD-seq *de novo* for Group 1 and Group 2 
+
+As referenced genome assembly resulted in few SNPs and there was no SNP related to therm-tolerance among therm-tolerant samples X non-therm-tolerants, we perfomed another approach to i) get more SNPs, ii) match the number of individuals therm-tolerant and not tolerants; and iii) exclude low deep coverage sequencing samples. 
+
+Two groups including 7 therm-tolerant and changing the 7 no tolerant were created to check if the SNPs related to the phenotype is not random.
+
+The 7 therm-tolerant individuals are the same, but the no therm were random selected respecting the proportion of north and south, and removing the low deep.
+
+```{r warning=FALSE, message=FALSE, echo=FALSE, eval=FALSE}
+#library(tidyverse)
+#library(knitr)
+#library(kableExtra)
+
+#attr1 <- read_table("gwas/phenotype1.txt", col_names = c("Samples", "Population", "Region", "Phenotype"))
+#attr2 <- read_table("gwas/phenotype2.txt", col_names = c("Samples", "Population", "Region", "Phenotype"))
+
+#attr1 %>%
+#  kable("html", align = 'clc', caption = 'Group 1') %>%
+#    kable_styling(full_width = F, position = "float_left")
+ 
+#attr2 %>%
+#  kable("html", align = 'clc', caption = 'Group 2') %>%
+#    kable_styling(full_width = F, position = "right")
+```
+
+| Region | Therm tolerant | NO therm tolerant Group 1 | NO therm tolerant Group 2 |
+| :---: | :---: | :---: | :---: |
+| N | C2 | A1 | C4 |
+| N | C3 | B8 | C6 |
+| N | C8 | B2 | B5 |
+| N | B7 | C5 | A2 |
+| S | E5 | E3 | F6 |
+| S | E6 | E4 | E2 |
+| S | D2 | D6 | D5 |
+
+
+## *De novo* assembly with Stacks
+
+Stacks v.2.60
+
+In shell script:
+
+```{r, engine = 'bash', eval = FALSE}
+mkdir group1 group2
+
+mkdir group1/fastq group2/fastq #mv fastq files for all individuals of each group to respective group directory
+
+#Same script for each group
+denovo_map.pl --samples fastq --popmap pop_map -o stacks -M 4 -r 3 -p 2
+populations -P stacks -M pop_map --min-samples-per-pop 0.65 --min-populations 2 --vcf --genepop --structure --fstats --hwe -t 8
+```
+
+### Analysis of populations.snps.vcf
+
+First analysis using VCFtools made for both Groups. Inspired on https://speciationgenomics.github.io/filtering_vcfs/.
+
+VCFtools - 0.1.16
+
+#### Analysis Group 1
+
+1) Calculate allele frequency
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf gwas/populations1.snps.vcf --freq2 --out group1 --max-alleles 2
+```
+
+2) Calculate mean depth per individual
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf gwas/populations1.snps.vcf --depth --out group1
+```
+
+3) Calculate mean depth per variant
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf gwas/populations1.snps.vcf --site-mean-depth --out group1
+```
+
+4) Calculate proportion of missing data per individual
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf gwas/populations1.snps.vcf --missing-indv --out group1
+```
+
+5) Calculate proportion of missing data per variant
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf gwas/populations1.snps.vcf --missing-site --out group1
+```
+
+
+Visualize all files in R:
+
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+library(tidyverse)
+library(ggpubr)
+
+#Check vcf file
+vcf <- read.vcfR("gwas/populations1.snps.vcf", verbose = FALSE)
+show(vcf)
+
+#Allele frequency and Minimun allele frequency (MAF)
+freq1 <- read_delim("gwas/group1.frq", delim = "\t", col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "a1" ,"a2"), skip = 1)
+#Create minor allele frequency 
+freq1$maf <- freq1 %>% select(a1, a2) %>% apply(1, function(z) min(z))
+summary(freq1$maf)
+f1 <- ggplot(freq1, aes(maf)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + ggtitle("Allele frquency")
+
+#Depth per individual
+depth1 <- read_delim("gwas/group1.idepth", delim = "\t")
+g1 <- ggplot(depth1, aes(INDV,MEAN_DEPTH)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ggtitle("Depth per individual")
+
+#Depth per variant
+depth_var1 <- read_delim("gwas/group1.ldepth.mean", delim = "\t")
+summary(depth_var1$MEAN_DEPTH)
+dv1 <- ggplot(depth_var1, aes(MEAN_DEPTH)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + theme_light() + xlim(0,300) + ggtitle("Depth per variant")
+
+#Missing per individual
+miss_ind1 <- read_delim("gwas/group1.imiss", delim = "\t")
+mi1 <- ggplot(miss_ind1, aes(INDV, F_MISS)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ggtitle("Missing per individual")
+
+#Missing per variant
+miss_var1 <- read_delim("gwas/group1.lmiss", delim = "\t")
+summary(miss_var1$F_MISS)
+mv1 <- ggplot(miss_var1, aes(F_MISS)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + ggtitle("Missing per variant")
+
+
+ggarrange(f1, g1, dv1, mi1, mv1, 
+          ncol = 2, nrow = 3)
+```
+
+
+#### Analysis Group 2
+
+1) Calculate allele frequency
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf populations2.snps.vcf --freq2 --out group2 --max-alleles 2
+vcftools --vcf populations2.snps.vcf --depth --out group2
+vcftools --vcf populations2.snps.vcf --site-mean-depth --out group2
+vcftools --vcf populations2.snps.vcf --missing-indv --out group2
+vcftools --vcf populations2.snps.vcf --missing-site --out group2
+```
+
+
+
+Visualize all files in R:
+
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+library(tidyverse)
+library(ggpubr)
+
+#Check vcf file
+vcf <- read.vcfR("gwas/populations2.snps.vcf", verbose = FALSE)
+show(vcf)
+
+#Allele frequency and Minimun allele frequency (MAF)
+freq2 <- read_delim("gwas/group2.frq", delim = "\t", col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "a1" ,"a2"), skip = 1)
+#Create minor allele frequency 
+freq2$maf <- freq2 %>% select(a1, a2) %>% apply(1, function(z) min(z))
+summary(freq2$maf)
+f2 <- ggplot(freq2, aes(maf)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + ggtitle("Allele frquency")
+
+#Depth per individual
+depth2 <- read_delim("gwas/group2.idepth", delim = "\t")
+g2 <- ggplot(depth2, aes(INDV,MEAN_DEPTH)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ggtitle("Depth per individual")
+
+#Depth per variant
+depth_var2 <- read_delim("gwas/group2.ldepth.mean", delim = "\t")
+summary(depth_var2$MEAN_DEPTH)
+dv2 <- ggplot(depth_var2, aes(MEAN_DEPTH)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + theme_light() + xlim(0,300) + ggtitle("Depth per variant")
+
+#Missing per individual
+miss_ind2 <- read_delim("gwas/group2.imiss", delim = "\t")
+mi2 <- ggplot(miss_ind2, aes(INDV, F_MISS)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ggtitle("Missing per individual")
+
+#Missing per variant
+miss_var2 <- read_delim("gwas/group2.lmiss", delim = "\t")
+summary(miss_var2$F_MISS)
+mv2 <- ggplot(miss_var2, aes(F_MISS)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + ggtitle("Missing per variant")
+
+
+ggarrange(f2, g2, dv2, mi2, mv2, 
+          ncol = 2, nrow = 3)
+```
+
+
+### Filtering vcf file
+
+Using vcftools to filter SNP data. We must adjust max-missing 1 to remove all missing data for further analysis
+```{bash, eval = FALSE}
+#Group 1
+vcftools --vcf populations1.snps.vcf --max-missing 1 --min-meanDP 5 --max-meanDP 200 --minDP 5 --maxDP 5 --maxDP 200 --recode --out populations1.snps
+
+# Group 2
+vcftools --vcf populations2.snps.vcf --max-missing 1 --min-meanDP 5 --max-meanDP 200 --minDP 5 --maxDP 5 --maxDP 200 --recode --out populations2.snps
+```
+
+Checking filtered vcf on R
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+
+#Check vcf file
+vcf1 <- read.vcfR("gwas/populations1.snps.recode.vcf", verbose = FALSE)
+show(vcf1)
+
+vcf2 <- read.vcfR("gwas/populations2.snps.recode.vcf", verbose = FALSE)
+show(vcf2)
+```
+
+### Prepare data for statistics
+
+#### Group 1
+
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+library(tidyverse)
+
+#Extract only genotyping and transform as numeric and transpose
+gt1 <- as.data.frame(t(extract.gt(vcf1, element = "GT", as.numeric = TRUE)))
+gt1 <- rownames_to_column(gt1, var = "id")
+
+#Add phenotype
+pop1 <- read.table("gwas/phenotype1.txt", col.names = c("id", "population", "region", "phenotype"))
+pop1 <- pop1 %>% mutate(phenotype = case_when(
+  phenotype == "NO_TOLERANT" ~ 0,
+  phenotype == "THERM_TOLERANT" ~ 1
+))
+
+#Add phenotype to gt
+data1 <- merge(pop1, gt1, by = "id")
+write.table(data1, file = "gwas/snpdata_group1.txt", sep = "\t", row.names = FALSE)
+
+```
+
+#### Group 2
+
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+library(tidyverse)
+
+#Extract only genotyping and transform as numeric (0 or 1) and transpose
+gt2 <- as.data.frame(t(extract.gt(vcf2, element = "GT", as.numeric = TRUE)))
+gt2 <- rownames_to_column(gt2, var = "id")
+
+#Add phenotype
+pop2 <- read.table("gwas/phenotype2.txt", col.names = c("id", "population", "region", "phenotype"))
+pop2 <- pop2 %>% mutate(phenotype = case_when(
+  phenotype == "NO_TOLERANT" ~ 0,
+  phenotype == "THERM_TOLERANT" ~ 1
+))
+
+#Add phenotype to gt
+data2 <- merge(pop2, gt2, by = "id")
+write.table(data2, file = "gwas/snpdata_group2.txt", sep = "\t", row.names = FALSE)
+
+```
+
+
+## Statistics
+
+Testing correlation between each SNP and phenotype (therm-tolerant or not). Both data, phenotype and SNPs are binary, so we used the Binary similarity coefficients to test the correlation to tolerance. When the correlation to tolerance is close to 1, the similarity between the SNP and the phenotype is total, when close to 0, the SNP is neutral, when close to -1, the similarity is total opposite. 
+We used Phi method for binary similarity coefficient (Yule GU. 1912. On the methods of measuring association between two attributes. J. Royal Stat. Soc. 75: 579–642.)
+
+$$
+S_{ij} = \frac{(a*d-b*c)}{\sqrt{(a+b)*(a+c)*(b+d)*(c+d)}}
+$$
+
+Group 1
+```{r, warning=FALSE, message=FALSE}
+library(data.table)
+
+## Loading and checking data
+dat1 <- fread("gwas/snpdata_group1.txt", drop = c(2,3))
+# drop population and region columns
+
+
+# Remove all SNPs that are 0 or 1 for all individual. They are not informative.
+colsel <- apply(dat1, 2, function(x) all(x == 0) | all(x == 1))
+dat1 <- dat1[, !colsel, with = FALSE]
+rm(colsel)
+
+# SNPs names
+snps1 <- names(dat1)[-(1:2)]
+
+## Coefficient of similarity
+source("gwas/binary_similarity_coefficients.R")
+
+sims1 <- sapply(snps1, function(x) similarity(dat1$phenotype, dat1[[x]], "phi"))
+
+#x <- as.data.table(sims, TRUE)[abs(sims) > 0.5]
+
+p1 <- ggplot(as.data.table(sims1, TRUE)[abs(sims1) > .5],
+       aes(reorder(rn, abs(sims1)), sims1)) +
+       geom_col(width = .2) + geom_point(aes(color = sims1), size = 4) +
+       scale_color_gradient2(low = '#533100', mid = 'gray60', high = '#03655D', guide = "none") +
+       theme_minimal() +
+       theme(axis.text.y = element_text(face = "bold")) +
+       coord_flip() +
+       labs(x = NULL, y = "correlation to tolerance",
+            caption = "only SNPs with correlation greater than ±0.5") +
+       ggtitle("Group 1")
+
+```
+
+Group 2
+```{r, warning=FALSE, message=FALSE}
+library(data.table)
+
+## Loading and checking data
+dat2 <- fread("gwas/snpdata_group2.txt", drop = c(2,3))
+# drop population and region columns
+
+
+# Remove all SNPs that are 0 or 1 for all individual. They are not informative.
+colsel <- apply(dat2, 2, function(x) all(x == 0) | all(x == 1))
+dat2 <- dat2[, !colsel, with = FALSE]
+rm(colsel)
+
+# SNPs names
+snps2 <- names(dat2)[-(1:2)]
+
+## Coefficient of similarity
+source("gwas/binary_similarity_coefficients.R")
+
+sims2 <- sapply(snps2, function(x) similarity(dat1$phenotype, dat2[[x]], "phi"))
+
+#x <- as.data.table(sims, TRUE)[abs(sims) > 0.5]
+
+p2 <- ggplot(as.data.table(sims2, TRUE)[abs(sims2) > .5],
+       aes(reorder(rn, abs(sims2)), sims2)) +
+       geom_col(width = .2) + geom_point(aes(color = sims2), size = 4) +
+       scale_color_gradient2(low = '#533100', mid = 'gray60', high = '#03655D', guide = "none") +
+       theme_minimal() +
+       theme(axis.text.y = element_text(face = "bold")) +
+       coord_flip() +
+       labs(x = NULL, y = "correlation to tolerance",
+            caption = "only SNPs with correlation greater than ±0.5") +
+       ggtitle("Group 2")
+
+ggarrange(p1, p2, 
+          ncol = 2, nrow = 1)
+
+```
+
+There are no SNPs with total similarity with phenotype (S = 1) or completely opposite (S = 0). We determined the similarities ±0.5 would be potential SNPs related or not to the phenotype.
+
+
+<font size = 5>**DONE!**</font>
 

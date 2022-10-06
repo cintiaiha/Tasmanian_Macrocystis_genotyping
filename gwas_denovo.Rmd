@@ -1,0 +1,355 @@
+---
+title: "GWAS with *de novo* assembly"
+author: "Cintia Iha"
+date: "23/02/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Assembly RAD-seq *de novo* for Group 1 and Group 2 
+
+As referenced genome assembly resulted in few SNPs and there was no SNP related to therm-tolerance among therm-tolerant samples X non-therm-tolerants, we perfomed another approach to i) get more SNPs, ii) match the number of individuals therm-tolerant and not tolerants; and iii) exclude low deep coverage sequencing samples. 
+
+Two groups including 7 therm-tolerant and changing the 7 no tolerant were created to check if the SNPs related to the phenotype is not random.
+
+The 7 therm-tolerant individuals are the same, but the no therm were random selected respecting the proportion of north and south, and removing the low deep.
+
+```{r warning=FALSE, message=FALSE, echo=FALSE, eval=FALSE}
+#library(tidyverse)
+#library(knitr)
+#library(kableExtra)
+
+#attr1 <- read_table("phenotype1.txt", col_names = c("Samples", "Population", "Region", "Phenotype"))
+#attr2 <- read_table("phenotype2.txt", col_names = c("Samples", "Population", "Region", "Phenotype"))
+
+#attr1 %>%
+#  kable("html", align = 'clc', caption = 'Group 1') %>%
+#    kable_styling(full_width = F, position = "float_left")
+ 
+#attr2 %>%
+#  kable("html", align = 'clc', caption = 'Group 2') %>%
+#    kable_styling(full_width = F, position = "right")
+```
+
+| Region | Therm tolerant | NO therm tolerant Group 1 | NO therm tolerant Group 2 |
+| :---: | :---: | :---: | :---: |
+| N | FMC2 | SH1 | FMC4 |
+| N | FMC3 | SC8 | FMC6 |
+| N | FMC8 | SC2 | SC5 |
+| N | SC7 | FMC5 | SH2 |
+| S | PI5 | PI3 | AI6 |
+| S | PI6 | PI4 | PI2 |
+| S | HI2 | HI6 | HI5 |
+
+
+## *De novo* assembly with Stacks
+
+Stacks v.2.60
+
+In shell script:
+
+```{r, engine = 'bash', eval = FALSE}
+mkdir group1 group2
+
+mkdir group1/fastq group2/fastq #mv fastq files for all individuals of each group to respective group directory
+
+#Same script for each group
+denovo_map.pl --samples fastq --popmap pop_map -o stacks -M 4 -r 3 -p 2
+populations -P stacks -M pop_map --min-samples-per-pop 0.65 --min-populations 2 --vcf --genepop --structure --fstats --hwe -t 8
+```
+
+### Analysis of populations.snps.vcf
+
+First analysis using VCFtools made for both Groups. Inspired on https://speciationgenomics.github.io/filtering_vcfs/.
+
+VCFtools - 0.1.16
+
+#### Analysis Group 1
+
+1) Calculate allele frequency
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf populations1.snps.vcf --freq2 --out group1 --max-alleles 2
+```
+
+2) Calculate mean depth per individual
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf populations1.snps.vcf --depth --out group1
+```
+
+3) Calculate mean depth per variant
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf populations1.snps.vcf --site-mean-depth --out group1
+```
+
+4) Calculate proportion of missing data per individual
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf populations1.snps.vcf --missing-indv --out group1
+```
+
+5) Calculate proportion of missing data per variant
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf populations1.snps.vcf --missing-site --out group1
+```
+
+
+Visualize all files in R:
+
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+library(tidyverse)
+library(ggpubr)
+
+#Check vcf file
+vcf <- read.vcfR("populations1.snps.vcf", verbose = FALSE)
+show(vcf)
+
+#Allele frequency and Minimun allele frequency (MAF)
+freq1 <- read_delim("group1.frq", delim = "\t", col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "a1" ,"a2"), skip = 1)
+#Create minor allele frequency 
+freq1$maf <- freq1 %>% select(a1, a2) %>% apply(1, function(z) min(z))
+summary(freq1$maf)
+f1 <- ggplot(freq1, aes(maf)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + ggtitle("Allele frquency")
+
+#Depth per individual
+depth1 <- read_delim("group1.idepth", delim = "\t")
+g1 <- ggplot(depth1, aes(INDV,MEAN_DEPTH)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ggtitle("Depth per individual")
+
+#Depth per variant
+depth_var1 <- read_delim("group1.ldepth.mean", delim = "\t")
+summary(depth_var1$MEAN_DEPTH)
+dv1 <- ggplot(depth_var1, aes(MEAN_DEPTH)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + theme_light() + xlim(0,300) + ggtitle("Depth per variant")
+
+#Missing per individual
+miss_ind1 <- read_delim("group1.imiss", delim = "\t")
+mi1 <- ggplot(miss_ind1, aes(INDV, F_MISS)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ggtitle("Missing per individual")
+
+#Missing per variant
+miss_var1 <- read_delim("group1.lmiss", delim = "\t")
+summary(miss_var1$F_MISS)
+mv1 <- ggplot(miss_var1, aes(F_MISS)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + ggtitle("Missing per variant")
+
+
+ggarrange(f1, g1, dv1, mi1, mv1, 
+          ncol = 2, nrow = 3)
+```
+
+
+#### Analysis Group 2
+
+1) Calculate allele frequency
+```{r, engine = 'bash', eval = FALSE}
+vcftools --vcf populations2.snps.vcf --freq2 --out group2 --max-alleles 2
+vcftools --vcf populations2.snps.vcf --depth --out group2
+vcftools --vcf populations2.snps.vcf --site-mean-depth --out group2
+vcftools --vcf populations2.snps.vcf --missing-indv --out group2
+vcftools --vcf populations2.snps.vcf --missing-site --out group2
+```
+
+
+
+Visualize all files in R:
+
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+library(tidyverse)
+library(ggpubr)
+
+#Check vcf file
+vcf <- read.vcfR("populations2.snps.vcf", verbose = FALSE)
+show(vcf)
+
+#Allele frequency and Minimun allele frequency (MAF)
+freq2 <- read_delim("group2.frq", delim = "\t", col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "a1" ,"a2"), skip = 1)
+#Create minor allele frequency 
+freq2$maf <- freq2 %>% select(a1, a2) %>% apply(1, function(z) min(z))
+summary(freq2$maf)
+f2 <- ggplot(freq2, aes(maf)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + ggtitle("Allele frquency")
+
+#Depth per individual
+depth2 <- read_delim("group2.idepth", delim = "\t")
+g2 <- ggplot(depth2, aes(INDV,MEAN_DEPTH)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ggtitle("Depth per individual")
+
+#Depth per variant
+depth_var2 <- read_delim("group2.ldepth.mean", delim = "\t")
+summary(depth_var2$MEAN_DEPTH)
+dv2 <- ggplot(depth_var2, aes(MEAN_DEPTH)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + theme_light() + xlim(0,300) + ggtitle("Depth per variant")
+
+#Missing per individual
+miss_ind2 <- read_delim("group2.imiss", delim = "\t")
+mi2 <- ggplot(miss_ind2, aes(INDV, F_MISS)) + geom_col() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ggtitle("Missing per individual")
+
+#Missing per variant
+miss_var2 <- read_delim("group2.lmiss", delim = "\t")
+summary(miss_var2$F_MISS)
+mv2 <- ggplot(miss_var2, aes(F_MISS)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + ggtitle("Missing per variant")
+
+
+ggarrange(f2, g2, dv2, mi2, mv2, 
+          ncol = 2, nrow = 3)
+```
+
+
+### Filtering vcf file
+
+Using vcftools to filter SNP data. We must adjust max-missing 1 to remove all missing data for further analysis
+```{bash, eval = FALSE}
+#Group 1
+vcftools --vcf populations1.snps.vcf --max-missing 1 --min-meanDP 5 --max-meanDP 200 --minDP 5 --maxDP 5 --maxDP 200 --recode --out populations1.snps
+
+# Group 2
+vcftools --vcf populations2.snps.vcf --max-missing 1 --min-meanDP 5 --max-meanDP 200 --minDP 5 --maxDP 5 --maxDP 200 --recode --out populations2.snps
+```
+
+Checking filtered vcf on R
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+
+#Check vcf file
+vcf1 <- read.vcfR("populations1.snps.recode.vcf", verbose = FALSE)
+show(vcf1)
+
+vcf2 <- read.vcfR("populations2.snps.recode.vcf", verbose = FALSE)
+show(vcf2)
+```
+
+### Prepare data for statistics
+
+#### Group 1
+
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+library(tidyverse)
+
+#Extract only genotyping and transform as numeric and transpose
+gt1 <- as.data.frame(t(extract.gt(vcf1, element = "GT", as.numeric = TRUE)))
+gt1 <- rownames_to_column(gt1, var = "id")
+
+#Add phenotype
+pop1 <- read.table("phenotype1.txt", col.names = c("id", "population", "region", "phenotype"))
+pop1 <- pop1 %>% mutate(phenotype = case_when(
+  phenotype == "NO_TOLERANT" ~ 0,
+  phenotype == "THERM_TOLERANT" ~ 1
+))
+
+#Add phenotype to gt
+data1 <- merge(pop1, gt1, by = "id")
+write.table(data1, file = "snpdata_group1.txt", sep = "\t", row.names = FALSE)
+
+```
+
+#### Group 2
+
+```{r, warning=FALSE, message=FALSE}
+library(vcfR)
+library(tidyverse)
+
+#Extract only genotyping and transform as numeric (0 or 1) and transpose
+gt2 <- as.data.frame(t(extract.gt(vcf2, element = "GT", as.numeric = TRUE)))
+gt2 <- rownames_to_column(gt2, var = "id")
+
+#Add phenotype
+pop2 <- read.table("phenotype2.txt", col.names = c("id", "population", "region", "phenotype"))
+pop2 <- pop2 %>% mutate(phenotype = case_when(
+  phenotype == "NO_TOLERANT" ~ 0,
+  phenotype == "THERM_TOLERANT" ~ 1
+))
+
+#Add phenotype to gt
+data2 <- merge(pop2, gt2, by = "id")
+write.table(data2, file = "snpdata_group2.txt", sep = "\t", row.names = FALSE)
+
+```
+
+
+## Statistics
+
+Testing correlation between each SNP and phenotype (therm-tolerant or not). Both data, phenotype and SNPs are binary, so we used the Binary similarity coefficients to test the correlation to tolerance. When the correlation to tolerance is close to 1, the similarity between the SNP and the phenotype is total, when close to 0, the SNP is neutral, when close to -1, the similarity is total opposite. 
+We used Phi method for binary similarity coefficient (Yule GU. 1912. On the methods of measuring association between two attributes. J. Royal Stat. Soc. 75: 579–642.)
+
+$$
+S_{ij} = \frac{(a*d-b*c)}{\sqrt{(a+b)*(a+c)*(b+d)*(c+d)}}
+$$
+
+Group 1
+```{r, warning=FALSE, message=FALSE}
+library(data.table)
+
+## Loading and checking data
+dat1 <- fread("snpdata_group1.txt", drop = c(2,3))
+# drop population and region columns
+
+
+# Remove all SNPs that are 0 or 1 for all individual. They are not informative.
+colsel <- apply(dat1, 2, function(x) all(x == 0) | all(x == 1))
+dat1 <- dat1[, !colsel, with = FALSE]
+rm(colsel)
+
+# SNPs names
+snps1 <- names(dat1)[-(1:2)]
+
+## Coefficient of similarity
+source("binary_similarity_coefficients.R")
+
+sims1 <- sapply(snps1, function(x) similarity(dat1$phenotype, dat1[[x]], "phi"))
+
+#x <- as.data.table(sims, TRUE)[abs(sims) > 0.5]
+
+p1 <- ggplot(as.data.table(sims1, TRUE)[abs(sims1) > .5],
+       aes(reorder(rn, abs(sims1)), sims1)) +
+       geom_col(width = .2) + geom_point(aes(color = sims1), size = 4) +
+       scale_color_gradient2(low = '#533100', mid = 'gray60', high = '#03655D', guide = "none") +
+       theme_minimal() +
+       theme(axis.text.y = element_text(face = "bold")) +
+       coord_flip() +
+       labs(x = NULL, y = "correlation to tolerance",
+            caption = "only SNPs with correlation greater than ±0.5") +
+       ggtitle("Group 1")
+
+```
+
+Group 2
+```{r, warning=FALSE, message=FALSE}
+library(data.table)
+
+## Loading and checking data
+dat2 <- fread("snpdata_group2.txt", drop = c(2,3))
+# drop population and region columns
+
+
+# Remove all SNPs that are 0 or 1 for all individual. They are not informative.
+colsel <- apply(dat2, 2, function(x) all(x == 0) | all(x == 1))
+dat2 <- dat2[, !colsel, with = FALSE]
+rm(colsel)
+
+# SNPs names
+snps2 <- names(dat2)[-(1:2)]
+
+## Coefficient of similarity
+source("binary_similarity_coefficients.R")
+
+sims2 <- sapply(snps2, function(x) similarity(dat1$phenotype, dat2[[x]], "phi"))
+
+#x <- as.data.table(sims, TRUE)[abs(sims) > 0.5]
+
+p2 <- ggplot(as.data.table(sims2, TRUE)[abs(sims2) > .5],
+       aes(reorder(rn, abs(sims2)), sims2)) +
+       geom_col(width = .2) + geom_point(aes(color = sims2), size = 4) +
+       scale_color_gradient2(low = '#533100', mid = 'gray60', high = '#03655D', guide = "none") +
+       theme_minimal() +
+       theme(axis.text.y = element_text(face = "bold")) +
+       coord_flip() +
+       labs(x = NULL, y = "correlation to tolerance",
+            caption = "only SNPs with correlation greater than ±0.5") +
+       ggtitle("Group 2")
+
+ggarrange(p1, p2, 
+          ncol = 2, nrow = 1)
+
+```
+
+There are no SNPs with total similarity with phenotype (S = 1) or completely opposite (S = 0). We determined the similarities ±0.5 would be potential SNPs related or not to the phenotype.
+
+

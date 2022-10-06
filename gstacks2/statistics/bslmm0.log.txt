@@ -1,0 +1,49 @@
+##
+## GEMMA Version    = 0.98.5 (2021-08-25)
+## Build profile    = /gnu/store/8rvid272yb53bgascf5c468z0jhsyflj-profile
+## GCC version      = 7.5.0
+## GSL Version      = 2.6
+## OpenBlas         = OpenBLAS 0.3.9  - OpenBLAS 0.3.9 DYNAMIC_ARCH NO_AFFINITY Barcelona MAX_THREADS=128
+##   arch           = Barcelona
+##   threads        = 1
+##   parallel type  = threaded
+##
+## Command Line Input = gemma -bfile genotypeGEMMA -bslmm 1 -k output/Vmatrix2.sXX.txt -w 10000 -s 1000000 -rpace 100 -wpace 1000 -o bslmm0 
+##
+## Date = Mon Feb 14 16:58:47 2022
+##
+## Summary Statistics:
+## number of total individuals = 43
+## number of analyzed individuals = 43
+## number of covariates = 1
+## number of phenotypes = 1
+## number of total SNPs/var = 5911
+## number of analyzed SNPs/var = 1283
+## REMLE log-likelihood in the null model = -18.2372
+## MLE log-likelihood in the null model = -17.3317
+## pve estimate in the null model = 9.9999e-06
+## se(pve) in the null model = 0.241597
+## vg estimate in the null model = 0
+## ve estimate in the null model = 0
+## beta estimate in the null model = 
+## se(beta) = 
+## estimated mean = 0.162791
+##
+## MCMC related:
+## initial value of h = 9.9999e-06
+## initial value of rho = 1
+## initial value of pi = 0.00779423
+## initial value of |gamma| = 10
+## random seed = -1
+## acceptance ratio = 0.134422
+##
+## Computation Time:
+## total computation time = 0.696754 min 
+## computation time break down: 
+##      time on calculating relatedness matrix = 0 min 
+##      time on eigen-decomposition = 6.93333e-06 min 
+##      time on calculating UtX = 8.76667e-06 min 
+##      time on proposal = 0.00035545 min 
+##      time on mcmc = 0.696478 min 
+##      time on Omega = 0.272994 min 
+##

@@ -1,0 +1,37 @@
+##
+## GEMMA Version    = 0.98.5 (2021-08-25)
+## Build profile    = /gnu/store/8rvid272yb53bgascf5c468z0jhsyflj-profile
+## GCC version      = 7.5.0
+## GSL Version      = 2.6
+## OpenBlas         = OpenBLAS 0.3.9  - OpenBLAS 0.3.9 DYNAMIC_ARCH NO_AFFINITY Barcelona MAX_THREADS=128
+##   arch           = Barcelona
+##   threads        = 6
+##   parallel type  = threaded
+##
+## Command Line Input = gemma -bfile genotypeGEMMA -k output/Vmatrix.cXX.txt -lmm 3 -o lmm_score 
+##
+## Date = Fri Feb 11 15:59:47 2022
+##
+## Summary Statistics:
+## number of total individuals = 43
+## number of analyzed individuals = 43
+## number of covariates = 1
+## number of phenotypes = 1
+## number of total SNPs/var = 5911
+## number of analyzed SNPs/var = 1283
+## REMLE log-likelihood in the null model = -18.2372
+## MLE log-likelihood in the null model = -17.5107
+## pve estimate in the null model = 1.81937e-06
+## se(pve) in the null model = 0.105087
+## vg estimate in the null model = 1.39535e-06
+## ve estimate in the null model = 0.139535
+## beta estimate in the null model =   0.162791
+## se(beta) =   0.0569648
+##
+## Computation Time:
+## total computation time = 0.00907752 min 
+## computation time break down: 
+##      time on eigen-decomposition = 6.245e-05 min 
+##      time on calculating UtX = 9.07833e-05 min 
+##      time on optimization = 0.00024055 min 
+##

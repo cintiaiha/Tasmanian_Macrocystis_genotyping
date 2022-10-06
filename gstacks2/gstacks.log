@@ -1,0 +1,39 @@
+gstacks v2.59, executed 2022-02-10 10:08:11 (zlib-1.2.11)
+gstacks -I alignments/bam/ -M pop_map -O gstacks2 -t 8
+Locus/sample distributions will be written to 'gstacks2/gstacks.log.distribs'.
+
+Configuration for this run:
+  Input mode: reference-based
+  Population map: 'pop_map'
+  Input files: 43, e.g. 'alignments/bam/AI3.bam'
+  Output to: 'gstacks2/'
+  Model: marukilow (var_alpha: 0.01, gt_alpha: 0.05)
+
+Reading BAM headers...
+Processing all loci...
+1K...
+2K...
+5K...
+10K...
+20K...
+done.
+
+Read 444885047 BAM records:
+  kept 27901324 primary alignments (6.3%), of which 0 reverse reads
+  skipped 42274987 primary alignments with insufficient mapping qualities (9.6%)
+  skipped 12895694 excessively soft-clipped primary alignments (2.9%)
+  skipped 358244075 unmapped reads (81.2%)
+  skipped some suboptimal (secondary/supplementary) alignment records
+
+  Per-sample stats (details in 'gstacks.log.distribs'):
+    read 10346163.9 records/sample (2672243-25964260)
+    kept 3.1%-9.5% of these
+
+Built 38339 loci comprising 27901324 forward reads and 0 matching paired-end reads; mean insert length was 0.0 (sd: nan).
+
+Genotyped 38339 loci:
+  effective per-sample coverage: mean=61.4x, stdev=37.1x, min=16.6x, max=186.0x
+  mean number of sites per locus: 138.8
+  a consistent phasing was found for 32122 of out 45661 (70.3%) diploid loci needing phasing
+
+gstacks is done.

@@ -1,0 +1,3 @@
+FILTERS	PARAMETERS	VALUES	BEFORE	AFTER	BLACKLIST	UNITS	COMMENTS
+vcf	original values in VCF + strata		43 / 1 / 1505 / 3193 / 5911	43 / 1 / 1505 / 3193 / 5911	0 / 0 / 0 / 0 / 0	individuals / strata / chrom / locus / markers	
+Filter monomorphic markers	filter.monomorphic		43 / 1 / 1505 / 3193 / 5911	43 / 1 / 1484 / 3109 / 5356	0 / 0 / 21 / 84 / 555	individuals / strata / chrom / locus / markers	
